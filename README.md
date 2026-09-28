@@ -16,6 +16,7 @@ welche deiner parallel laufenden Sessions gerade auf dich wartet.
 - **Ziehen** mit der linken Maustaste verschiebt das Fenster (Position wird gespeichert).
 - **Rechtsklick** → *Ampel beenden*.
 - Wird ein Terminal geschlossen, verschwindet die zugehörige Ampel automatisch.
+- Läuft keine Session, ist das Fenster ganz weg – mit der nächsten Session taucht es wieder auf.
 
 > *English:* A tiny always-on-top traffic light for every running Claude Code session on Windows.
 > Green = done, yellow = working, red = needs your input, blue = running a shell command.
@@ -89,7 +90,9 @@ Es werden keine Daten verschickt – alles bleibt lokal auf deinem Rechner.
 
 - **Keine Ampel erscheint nach dem Start einer Session:** Wurde die Session *nach* der Installation gestartet?
   Ist `node -v` im Terminal verfügbar?
-- **Ampel bleibt auf „-":** Prüfen, ob in `%USERPROFILE%\.claude\settings.json` Einträge mit `claude-ampel` stehen.
+- **Ampel bleibt unsichtbar, obwohl eine Session läuft:** Prüfen, ob in `%USERPROFILE%\.claude\settings.json` Einträge mit `claude-ampel` stehen.
+- **Ampel beenden, während keine Session läuft:** Dann ist das Fenster unsichtbar und das Rechtsklick-Menü nicht erreichbar –
+  im Task-Manager den `powershell.exe`-Prozess der Ampel beenden, oder eine Session starten und per Rechtsklick beenden.
 - **Fehlerprotokoll:** `%LOCALAPPDATA%\claude-ampel\error.log`
 - **Klick holt das Terminal nicht nach vorne:** Funktioniert mit Windows Terminal und der klassischen Konsole.
   Bei anderen Terminals (z. B. im Terminal von VS Code) piept es stattdessen.

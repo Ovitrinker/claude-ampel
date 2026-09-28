@@ -99,6 +99,7 @@ $win.AllowsTransparency = $true
 $win.Background = [System.Windows.Media.Brushes]::Transparent
 $win.Topmost = $true
 $win.ShowInTaskbar = $false
+$win.ShowActivated = $false
 $win.ResizeMode = 'NoResize'
 $win.SizeToContent = 'WidthAndHeight'
 $win.WindowStartupLocation = 'Manual'
@@ -165,9 +166,6 @@ $win.Add_SourceInitialized({
 # --- Aktualisierung -----------------------------------------------------------
 $ampeln = @{}
 $sessionPid = @{}
-$idle = New-Ampel
-$idle.Label.Text = '-'
-$idle.Root.ToolTip = 'Keine Claude-Code-Session aktiv'
 $script:order = ''
 $script:tick = 0
 
@@ -217,11 +215,18 @@ function Update-Ampeln {
   foreach ($id in @($ampeln.Keys)) { if (-not $seen[$id]) { $ampeln.Remove($id); $sessionPid.Remove($id) } }
 
   $newOrder = ($sessions | ForEach-Object { $_.session_id }) -join ','
-  if ($newOrder -ne $script:order -or $panel.Children.Count -eq 0) {
+  if ($newOrder -ne $script:order) {
     $script:order = $newOrder
     $panel.Children.Clear()
-    if ($sessions.Count -eq 0) { [void]$panel.Children.Add($idle.Root) }
-    else { foreach ($s in $sessions) { [void]$panel.Children.Add($ampeln[[string]$s.session_id].Root) } }
+    foreach ($s in $sessions) { [void]$panel.Children.Add($ampeln[[string]$s.session_id].Root) }
+  }
+
+  # Ohne Session verschwindet die Ampel ganz, mit der ersten Session kommt sie zurueck
+  if ($sessions.Count -eq 0) {
+    if ($win.IsVisible) { $win.Hide() }
+  } elseif (-not $win.IsVisible) {
+    $win.Show()
+    Keep-OnScreen
   }
 
   # Alle ~5s wieder ganz nach vorne holen (andere Topmost-Fenster koennen uns verdraengen)
@@ -233,7 +238,12 @@ function Update-Ampeln {
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(400)
 $timer.Add_Tick({ try { Update-Ampeln } catch { Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) $_" } })
-$win.Add_Loaded({ Update-Ampeln; Keep-OnScreen; $timer.Start() })
 
-[void]$win.ShowDialog()
+# Fenster startet unsichtbar, Update-Ampeln blendet es erst bei einer Session ein.
+# Application.Run statt ShowDialog: ein Dialog wuerde beim Verstecken beendet.
+$app = New-Object System.Windows.Application
+$app.ShutdownMode = 'OnExplicitShutdown'
+$win.Add_Closed({ $timer.Stop(); $app.Shutdown() })
+$timer.Start()
+[void]$app.Run()
 $mutex.ReleaseMutex()
