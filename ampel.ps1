@@ -2,8 +2,9 @@
 # Rot = braucht deine Eingabe, Gelb = arbeitet, Gruen = fertig, Blau = Shell aktiv.
 # Klick auf eine Ampel holt das Terminal dieser Session nach vorne, Ziehen verschiebt.
 # Die Stati schreibt hook.js nach %LOCALAPPDATA%\claude-ampel\sessions.
+# Daneben: Nutzung des 5-Stunden- und Wochenlimits mit Reset-Zeit (wie /usage in Claude Code).
 
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Net.Http
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -104,9 +105,13 @@ $win.ResizeMode = 'NoResize'
 $win.SizeToContent = 'WidthAndHeight'
 $win.WindowStartupLocation = 'Manual'
 
+$root = New-Object System.Windows.Controls.StackPanel
+$root.Orientation = 'Horizontal'
+$win.Content = $root
+
 $panel = New-Object System.Windows.Controls.StackPanel
 $panel.Orientation = 'Horizontal'
-$win.Content = $panel
+[void]$root.Children.Add($panel)
 
 $menu = New-Object System.Windows.Controls.ContextMenu
 $quit = New-Object System.Windows.Controls.MenuItem
@@ -145,6 +150,7 @@ $win.Add_MouseLeftButtonDown({
   $el = $e.OriginalSource
   while ($el -and -not ($el.Tag -is [string])) { $el = [System.Windows.Media.VisualTreeHelper]::GetParent($el) }
   if (-not $el) { return }
+  if ($el.Tag -eq 'usage') { $script:usageNext = [DateTime]::MinValue; return }
   $claudePid = $sessionPid[$el.Tag]
   $win.Cursor = [System.Windows.Input.Cursors]::Wait
   try {
@@ -235,9 +241,182 @@ function Update-Ampeln {
   }
 }
 
+# --- Usage-Limits -------------------------------------------------------------
+# Gleiche Quelle wie /usage in Claude Code: api.anthropic.com/api/oauth/usage mit dem
+# OAuth-Token aus ~/.claude/.credentials.json (Claude Code erneuert ihn selbst).
+# Nur lesend. Ohne Anmeldung per Claude-Abo bleibt der Block einfach weg.
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+$credFile  = Join-Path $env:USERPROFILE '.claude\.credentials.json'
+$deCulture = [System.Globalization.CultureInfo]::GetCultureInfo('de-CH')
+$invariant = [System.Globalization.CultureInfo]::InvariantCulture
+$http = New-Object System.Net.Http.HttpClient
+$http.Timeout = [TimeSpan]::FromSeconds(15)
+$script:usageTask = $null
+$script:usageNext = [DateTime]::MinValue
+$script:usageData = $null
+$script:usageAt   = $null
+
+$usageBox = New-Object System.Windows.Controls.Border
+$usageBox.CornerRadius = 5
+$usageBox.Background = New-Brush '#1C1C1E'
+$usageBox.BorderBrush = New-Brush '#48484A'
+$usageBox.BorderThickness = 1
+$usageBox.Padding = '7,4,7,4'
+$usageBox.Margin = '1,0'
+$usageBox.Visibility = 'Collapsed'
+$usageBox.Tag = 'usage'
+$usageBox.Cursor = [System.Windows.Input.Cursors]::Hand
+$usageStack = New-Object System.Windows.Controls.StackPanel
+$usageStack.VerticalAlignment = 'Center'
+$usageBox.Child = $usageStack
+[void]$root.Children.Add($usageBox)
+
+$usageBarWidth = 98
+function New-UsageRow([string]$name) {
+  $grid = New-Object System.Windows.Controls.Grid
+  $grid.Margin = '0,3,0,3'
+  foreach ($w in 16, 30, 52) {
+    $c = New-Object System.Windows.Controls.ColumnDefinition
+    $c.Width = New-Object System.Windows.GridLength $w
+    $grid.ColumnDefinitions.Add($c)
+  }
+  foreach ($i in 0, 1) {
+    $r = New-Object System.Windows.Controls.RowDefinition
+    $r.Height = [System.Windows.GridLength]::Auto
+    $grid.RowDefinitions.Add($r)
+  }
+  $cells = foreach ($i in 0..2) {
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.FontSize = 10
+    $t.Foreground = New-Brush '#8E8E93'
+    [System.Windows.Controls.Grid]::SetColumn($t, $i)
+    [void]$grid.Children.Add($t)
+    $t
+  }
+  $cells[0].Text = $name
+  $cells[1].FontWeight = 'SemiBold'
+  $cells[1].TextAlignment = 'Right'
+  $cells[1].Margin = '0,0,6,0'
+
+  # duenner Fortschrittsbalken unter der Zeile
+  $track = New-Object System.Windows.Controls.Border
+  $track.Height = 2
+  $track.Width = $usageBarWidth
+  $track.HorizontalAlignment = 'Left'
+  $track.CornerRadius = 1
+  $track.Margin = '0,2,0,0'
+  $track.Background = New-Brush '#3A3A3C'
+  $fill = New-Object System.Windows.Controls.Border
+  $fill.CornerRadius = 1
+  $fill.HorizontalAlignment = 'Left'
+  $fill.Width = 0
+  $track.Child = $fill
+  [System.Windows.Controls.Grid]::SetRow($track, 1)
+  [System.Windows.Controls.Grid]::SetColumnSpan($track, 3)
+  [void]$grid.Children.Add($track)
+
+  [void]$usageStack.Children.Add($grid)
+  @{ Pct = $cells[1]; Reset = $cells[2]; Fill = $fill }
+}
+$rowSession = New-UsageRow '5h'
+$rowWeek    = New-UsageRow 'Wo'
+
+function Get-ResetTime($lim) {
+  if (-not $lim -or -not $lim.resets_at) { return $null }
+  [DateTimeOffset]::Parse([string]$lim.resets_at, $invariant)
+}
+
+function Format-Reset($lim, [bool]$withDay) {
+  $r = Get-ResetTime $lim
+  if (-not $r) { return '' }
+  $t = $r.LocalDateTime
+  if (-not $withDay) { return $t.ToString('HH:mm') }
+  "$($t.ToString('ddd', $deCulture).TrimEnd('.')) $($t.ToString('HH:mm'))"
+}
+
+function Format-Left($lim) {
+  $r = Get-ResetTime $lim
+  if (-not $r) { return '' }
+  $left = $r - [DateTimeOffset]::Now
+  if ($left.TotalMinutes -lt 1) { return 'jetzt' }
+  if ($left.TotalHours -ge 24) { return ('in {0} T {1} h' -f [int][Math]::Floor($left.TotalDays), $left.Hours) }
+  if ($left.TotalHours -ge 1)  { return ('in {0} h {1:00} min' -f [int][Math]::Floor($left.TotalHours), $left.Minutes) }
+  'in {0} min' -f [int][Math]::Ceiling($left.TotalMinutes)
+}
+
+function Set-UsageRow($row, $lim, [bool]$withDay) {
+  if (-not $lim -or $null -eq $lim.utilization) {
+    $row.Pct.Text = '-'; $row.Reset.Text = ''; $row.Fill.Width = 0; return
+  }
+  $p = [double]$lim.utilization
+  # Reset-Zeit vorbei, aber noch keine frischen Daten: Limit ist bereits zurueckgesetzt
+  $r = Get-ResetTime $lim
+  $expired = $r -and $r -le [DateTimeOffset]::Now
+  if ($expired) { $p = 0 }
+  $color = if ($p -ge 90) { '#FF3B30' } elseif ($p -ge 70) { '#FFCC00' } else { '#E5E5EA' }
+  $row.Pct.Text = '{0:0}%' -f $p
+  $row.Pct.Foreground = New-Brush $color
+  $row.Reset.Text = if ($expired) { '' } else { Format-Reset $lim $withDay }
+  $row.Fill.Background = New-Brush $color
+  $row.Fill.Width = [Math]::Max(0, [Math]::Min($usageBarWidth, $usageBarWidth * $p / 100))
+}
+
+function Update-Usage {
+  # fertige Abfrage abholen
+  if ($script:usageTask -and $script:usageTask.IsCompleted) {
+    $t = $script:usageTask; $script:usageTask = $null
+    if ($t.IsFaulted -or $t.IsCanceled) {
+      Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Usage: keine Verbindung"
+    } else {
+      $resp = $t.Result
+      if ($resp.IsSuccessStatusCode) {
+        $script:usageData = $resp.Content.ReadAsStringAsync().Result | ConvertFrom-Json
+        $script:usageAt = Get-Date
+      } elseif ([int]$resp.StatusCode -eq 429) {
+        $script:usageNext = (Get-Date).AddMinutes(5)
+      }
+      $resp.Dispose()
+    }
+  }
+
+  # neue Abfrage starten: jede Minute, nur solange das Fenster sichtbar ist
+  if (-not $script:usageTask -and $win.IsVisible -and (Get-Date) -ge $script:usageNext) {
+    $script:usageNext = (Get-Date).AddSeconds(60)
+    $cred = $null
+    try { $cred = ([System.IO.File]::ReadAllText($credFile) | ConvertFrom-Json).claudeAiOauth } catch {}
+    if ($cred -and $cred.accessToken) {
+      $req = New-Object System.Net.Http.HttpRequestMessage ([System.Net.Http.HttpMethod]::Get), 'https://api.anthropic.com/api/oauth/usage'
+      $req.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue 'Bearer', $cred.accessToken
+      [void]$req.Headers.TryAddWithoutValidation('anthropic-beta', 'oauth-2025-04-20')
+      $script:usageTask = $http.SendAsync($req)
+    }
+  }
+
+  $d = $script:usageData
+  if (-not $d) { $usageBox.Visibility = 'Collapsed'; return }
+  $usageBox.Visibility = 'Visible'
+  Set-UsageRow $rowSession $d.five_hour $false
+  Set-UsageRow $rowWeek $d.seven_day $true
+  # Daten aelter als 5 min (offline, Token abgelaufen): gedimmt anzeigen
+  $usageStack.Opacity = if (((Get-Date) - $script:usageAt).TotalMinutes -gt 5) { 0.45 } else { 1 }
+
+  $tip = 'Claude-Nutzung (wie /usage)'
+  foreach ($x in @(@('5-Stunden-Limit', $d.five_hour, $false), @('Wochenlimit', $d.seven_day, $true))) {
+    $lim = $x[1]
+    if ($lim -and $null -ne $lim.utilization) {
+      $tip += "`n{0}: {1:0}% - Reset {2} ({3})" -f $x[0], [double]$lim.utilization, (Format-Reset $lim $x[2]), (Format-Left $lim)
+    }
+  }
+  $tip += "`nStand $($script:usageAt.ToString('HH:mm:ss')) - Klick: aktualisieren"
+  $usageBox.ToolTip = $tip
+}
+
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(400)
-$timer.Add_Tick({ try { Update-Ampeln } catch { Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) $_" } })
+$timer.Add_Tick({
+  try { Update-Ampeln } catch { Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) $_" }
+  try { Update-Usage } catch { Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Usage: $_" }
+})
 
 # Fenster startet unsichtbar, Update-Ampeln blendet es erst bei einer Session ein.
 # Application.Run statt ShowDialog: ein Dialog wuerde beim Verstecken beendet.

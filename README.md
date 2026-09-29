@@ -17,6 +17,9 @@ welche deiner parallel laufenden Sessions gerade auf dich wartet.
 - **Rechtsklick** → *Ampel beenden*.
 - Wird ein Terminal geschlossen, verschwindet die zugehörige Ampel automatisch.
 - Läuft keine Session, ist das Fenster ganz weg – mit der nächsten Session taucht es wieder auf.
+- **Nutzungslimits:** Neben den Ampeln steht, wie viel vom **5-Stunden-Limit** und vom **Wochenlimit** verbraucht ist
+  und wann es zurückgesetzt wird (dieselben Werte wie `/usage`). Mouseover zeigt die Restzeit, Klick aktualisiert sofort.
+  Ab 70 % wird die Zahl gelb, ab 90 % rot.
 
 > *English:* A tiny always-on-top traffic light for every running Claude Code session on Windows.
 > Green = done, yellow = working, red = needs your input, blue = running a shell command.
@@ -84,7 +87,9 @@ Benutzte Hook-Events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, 
 `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`.
 Subagenten werden ignoriert, es zählt nur die Haupt-Session.
 
-Es werden keine Daten verschickt – alles bleibt lokal auf deinem Rechner.
+Die Session-Stati bleiben lokal auf deinem Rechner. Für die Nutzungslimits fragt die Ampel einmal pro Minute
+`https://api.anthropic.com/api/oauth/usage` ab – mit dem Login-Token, das Claude Code in
+`%USERPROFILE%\.claude\.credentials.json` speichert (nur lesend, wie `/usage`). Ohne Anmeldung per Claude-Abo bleibt die Anzeige weg.
 
 ## Probleme?
 
