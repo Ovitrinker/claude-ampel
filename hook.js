@@ -91,7 +91,22 @@ function main(e) {
   fs.mkdirSync(DIR, { recursive: true });
   const tmp = file + '.' + process.pid + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(rec));
-  fs.renameSync(tmp, file);
+  try {
+    renameWithRetry(tmp, file);
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
+}
+
+// Unter Windows scheitert das Umbenennen mit EPERM/EBUSY, solange die Ampel die
+// Zieldatei gerade liest. Das dauert nur Millisekunden, also kurz warten und nochmals.
+function renameWithRetry(from, to) {
+  for (let i = 0; ; i++) {
+    try { return fs.renameSync(from, to); } catch (err) {
+      if (i >= 20 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
 }
 
 let raw = '';

@@ -200,6 +200,13 @@ function Update-Ampeln {
   }
   $sessions = @($sessions | Sort-Object { [long]$_.started })
 
+  # Liegengebliebene Temp-Dateien abgebrochener Hooks aufraeumen (etwa jede Minute)
+  if (($script:tick % 150) -eq 1) {
+    foreach ($f in [System.IO.Directory]::GetFiles($sessDir, '*.tmp')) {
+      if ([System.IO.File]::GetLastWriteTimeUtc($f) -lt [DateTime]::UtcNow.AddMinutes(-1)) { try { [System.IO.File]::Delete($f) } catch {} }
+    }
+  }
+
   $seen = @{}
   foreach ($s in $sessions) {
     $id = [string]$s.session_id
