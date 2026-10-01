@@ -1,7 +1,7 @@
-# Holt das Terminal einer Claude-Code-Session (per claude.exe-PID) nach vorne.
-# Klassische Konsole: Fenster direkt aktivieren.
-# Windows Terminal: kurz einen eindeutigen Titel setzen, den Tab mit diesem Titel
-# per UI Automation auswaehlen, danach den alten Titel wiederherstellen.
+# Brings the terminal of a Claude Code session (by claude.exe PID) to the front.
+# Classic console: activate the window directly.
+# Windows Terminal: briefly set a unique title, select the tab with that title via
+# UI Automation, then restore the old title.
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @"
@@ -19,8 +19,8 @@ public static class AmpelFocus {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
 
-  // Haengt sich an die Konsole von pid, liest den Titel, setzt optional einen neuen.
-  // Liefert false, wenn die Konsole nicht erreichbar ist.
+  // Attaches to the console of pid, reads the title, optionally sets a new one.
+  // Returns false if the console can't be reached.
   public static bool SwapTitle(uint pid, string newTitle, out string oldTitle, out IntPtr window, out string windowClass) {
     oldTitle = null; window = IntPtr.Zero; windowClass = "";
     FreeConsole();
@@ -58,7 +58,7 @@ function Get-TerminalTabs {
   }
 }
 
-# Liefert $true, wenn das Terminal gefunden und nach vorne geholt wurde.
+# Returns $true if the terminal was found and brought to the front.
 function Focus-ClaudeSession([int]$claudePid) {
   if ($claudePid -le 0) { return $false }
   $marker = 'AMPEL-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
@@ -66,14 +66,14 @@ function Focus-ClaudeSession([int]$claudePid) {
   if (-not [AmpelFocus]::SwapTitle($claudePid, $null, [ref]$old, [ref]$hwnd, [ref]$cls)) { return $false }
 
   if ($cls -ne 'PseudoConsoleWindow' -and $hwnd -ne [IntPtr]::Zero) {
-    [AmpelFocus]::Activate($hwnd)   # klassisches Konsolenfenster
+    [AmpelFocus]::Activate($hwnd)   # classic console window
     return $true
   }
 
-  # Windows Terminal: Claude ueberschreibt den Titel beim Arbeiten staendig,
-  # darum den Marker wiederholt setzen, bis der Tab ihn anzeigt.
-  # Tab-Namen vorher merken: Claude setzt den Titel per Escape-Sequenz direkt im
-  # Terminal, die Konsole selbst kennt ihn nicht.
+  # Windows Terminal: Claude keeps overwriting the title while working,
+  # so set the marker repeatedly until the tab shows it.
+  # Remember the tab names first: Claude sets the title via escape sequence directly
+  # in the terminal, the console itself doesn't know it.
   $before = @{}
   foreach ($t in Get-TerminalTabs) { $before[$t.Id] = $t.Name }
   $found = $null

@@ -1,107 +1,103 @@
 # Claude-Ampel 🚦
 
-Ein kleines Fenster, das immer im Vordergrund bleibt und für jede laufende
-[Claude Code](https://claude.com/claude-code)-Session eine Ampel zeigt. So siehst du auf einen Blick,
-welche deiner parallel laufenden Sessions gerade auf dich wartet.
+A small window that always stays on top and shows a traffic light ("Ampel") for every running
+[Claude Code](https://claude.com/claude-code) session. That way you can see at a glance which of
+your parallel sessions is currently waiting for you.
 
-| Farbe | Bedeutung |
+| Colour | Meaning |
 |---|---|
-| 🟢 Grün | Fertig, wartet auf deine nächste Nachricht |
-| 🟡 Gelb | Arbeitet |
-| 🔴 Rot (blinkt) | Braucht deine Eingabe (Rückfrage, Plan-Freigabe, Berechtigung) |
-| 🔵 Blau | Führt gerade einen Shell-Befehl aus (Bash/PowerShell) |
+| 🟢 Green | Done, waiting for your next message |
+| 🟡 Yellow | Working |
+| 🔴 Red (blinking) | Needs your input (question, plan approval, permission) |
+| 🔵 Blue | Currently running a shell command (Bash/PowerShell) |
 
-- **Klick** auf eine Ampel holt das Terminal dieser Session nach vorne – auch den richtigen Tab in Windows Terminal.
-- **Mouseover** zeigt Ordner und Status.
-- **Ziehen** mit der linken Maustaste verschiebt das Fenster (Position wird gespeichert).
-- **Rechtsklick** → *Ampel beenden*.
-- Wird ein Terminal geschlossen, verschwindet die zugehörige Ampel automatisch.
-- Läuft keine Session, ist das Fenster ganz weg – mit der nächsten Session taucht es wieder auf.
-- **Nutzungslimits:** Neben den Ampeln steht, wie viel vom **5-Stunden-Limit** und vom **Wochenlimit** verbraucht ist
-  und wann es zurückgesetzt wird (dieselben Werte wie `/usage`). Mouseover zeigt die Restzeit, Klick aktualisiert sofort.
-  Ab 70 % wird die Zahl gelb, ab 90 % rot.
-
-> *English:* A tiny always-on-top traffic light for every running Claude Code session on Windows.
-> Green = done, yellow = working, red = needs your input, blue = running a shell command.
-> Install: download, run `Installieren.cmd`, restart your Claude Code sessions.
+- **Click** a light to bring that session's terminal to the front – including the right tab in Windows Terminal.
+- **Hover** shows folder and status.
+- **Drag** with the left mouse button to move the window (the position is saved).
+- **Right-click** → *Quit Ampel*.
+- When a terminal is closed, its light disappears automatically.
+- When no session is running, the window is gone completely – it reappears with the next session.
+- **Usage limits:** next to the lights you can see how much of the **5-hour limit** and the **weekly limit** is used
+  and when it resets (the same values as `/usage`). Hover shows the remaining time, click refreshes immediately.
+  From 70 % the number turns yellow, from 90 % red.
 
 ---
 
-## Voraussetzungen
+## Requirements
 
-- **Windows 10 oder 11** (die Ampel nutzt WPF und Windows-PowerShell, beides ist bei Windows dabei)
+- **Windows 10 or 11** (the light uses WPF and Windows PowerShell, both included with Windows)
 - **[Claude Code](https://claude.com/claude-code)**
-- **[Node.js](https://nodejs.org)** – der Hook, der den Status meldet, ist ein Node-Skript.
-  Prüfen im Terminal mit `node -v`. Falls der Befehl nicht gefunden wird: Node.js (LTS) installieren.
+- **[Node.js](https://nodejs.org)** – the hook that reports the status is a Node script.
+  Check in a terminal with `node -v`. If the command isn't found: install Node.js (LTS).
 
 ## Installation
 
-1. **Herunterladen:** Oben auf dieser Seite auf den grünen Knopf **Code → Download ZIP** klicken
-   (oder `git clone https://github.com/Ovitrinker/claude-ampel.git`).
-2. **Entpacken** an einen Ort, wo der Ordner bleiben kann, z. B. `C:\Tools\claude-ampel`.
-   Nicht im Download-Ordner lassen – die Einstellungen zeigen danach fest auf diesen Pfad.
-3. **Doppelklick auf `Installieren.cmd`.**
-   Falls Windows „Der Computer wurde durch Windows geschützt" anzeigt: *Weitere Informationen → Trotzdem ausführen*.
-4. **Offene Claude-Code-Sessions neu starten.** Hooks werden nur beim Start einer Session geladen.
+1. **Download:** click the green **Code → Download ZIP** button at the top of this page
+   (or `git clone https://github.com/Ovitrinker/claude-ampel.git`).
+2. **Extract** it to a place where the folder can stay, e.g. `C:\Tools\claude-ampel`.
+   Don't leave it in the Downloads folder – the settings point to this path afterwards.
+3. **Double-click `Install.cmd`.**
+   If Windows shows "Windows protected your PC": *More info → Run anyway*.
+4. **Restart any open Claude Code sessions.** Hooks are only loaded when a session starts.
 
-Das war's. Die Ampel erscheint unten rechts am Bildschirm und startet ab jetzt automatisch mit Windows.
+That's it. The light appears at the bottom right of the screen and from now on starts automatically with Windows.
 
-### Was der Installer macht
+### What the installer does
 
-- trägt die Hooks in `%USERPROFILE%\.claude\settings.json` ein
-  (vorher wird ein Backup `settings.json.bak-ampel-<Datum>` angelegt; deine anderen Einstellungen und Hooks bleiben unverändert),
-- legt eine Verknüpfung **Claude-Ampel** auf dem Desktop und im Autostart an,
-- startet die Ampel.
+- adds the hooks to `%USERPROFILE%\.claude\settings.json`
+  (a backup `settings.json.bak-ampel-<date>` is created first; your other settings and hooks stay unchanged),
+- creates a **Claude-Ampel** shortcut on the desktop and in startup,
+- starts the light.
 
-Optionen, falls du keine Verknüpfungen willst (in PowerShell im Ordner ausführen):
+Options if you don't want the shortcuts (run in PowerShell inside the folder):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoAutostart -NoDesktop
 ```
 
-Wenn du den Ordner später verschiebst, einfach `Installieren.cmd` am neuen Ort nochmals ausführen.
+If you move the folder later, simply run `Install.cmd` again in the new location.
 
-## Deinstallation
+## Uninstalling
 
-Doppelklick auf **`Deinstallieren.cmd`**. Das entfernt die Hooks, die Verknüpfungen, beendet die Ampel
-und löscht die gespeicherten Stati. Danach kannst du den Ordner löschen.
+Double-click **`Uninstall.cmd`**. This removes the hooks and the shortcuts, quits the light and
+deletes the stored states. After that you can delete the folder.
 
-## Wie es funktioniert
+## How it works
 
 ```
-Claude Code ──Hook-Event──▶ hook.js ──schreibt──▶ %LOCALAPPDATA%\claude-ampel\sessions\<id>.json
+Claude Code ──hook event──▶ hook.js ──writes──▶ %LOCALAPPDATA%\claude-ampel\sessions\<id>.json
                                                               │
-                                              ampel.ps1 liest alle 0,4 s ◀┘
+                                           ampel.ps1 reads every 0.4 s ◀┘
 ```
 
-| Datei | Aufgabe |
+| File | Purpose |
 |---|---|
-| `hook.js` | Wird von Claude Code bei jedem Hook-Event aufgerufen und schreibt den Status der Session in eine kleine JSON-Datei. |
-| `ampel.ps1` | Das Ampel-Fenster (WPF). Liest die Status-Dateien und zeigt eine Ampel pro Session. |
-| `focus.ps1` | Holt beim Klick das passende Terminal bzw. den Windows-Terminal-Tab nach vorne. |
-| `start-ampel.vbs` | Startet die Ampel ohne sichtbares Konsolenfenster. |
-| `setup-hooks.js` | Trägt die Hooks in `settings.json` ein bzw. entfernt sie. |
-| `install.ps1` / `uninstall.ps1` | Installation und Deinstallation (`Installieren.cmd` / `Deinstallieren.cmd` rufen sie auf). |
+| `hook.js` | Called by Claude Code on every hook event; writes the session's status to a small JSON file. |
+| `ampel.ps1` | The light window (WPF). Reads the status files and shows one light per session. |
+| `focus.ps1` | On click, brings the matching terminal or Windows Terminal tab to the front. |
+| `start-ampel.vbs` | Starts the light without a visible console window. |
+| `setup-hooks.js` | Adds the hooks to `settings.json` or removes them. |
+| `install.ps1` / `uninstall.ps1` | Installation and uninstallation (called by `Install.cmd` / `Uninstall.cmd`). |
 
-Benutzte Hook-Events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, `Notification`,
+Hook events used: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, `Notification`,
 `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`.
-Subagenten werden ignoriert, es zählt nur die Haupt-Session.
+Subagents are ignored; only the main session counts.
 
-Die Session-Stati bleiben lokal auf deinem Rechner. Für die Nutzungslimits fragt die Ampel einmal pro Minute
-`https://api.anthropic.com/api/oauth/usage` ab – mit dem Login-Token, das Claude Code in
-`%USERPROFILE%\.claude\.credentials.json` speichert (nur lesend, wie `/usage`). Ohne Anmeldung per Claude-Abo bleibt die Anzeige weg.
+The session states stay local on your machine. For the usage limits the light queries
+`https://api.anthropic.com/api/oauth/usage` once a minute – using the login token Claude Code stores in
+`%USERPROFILE%\.claude\.credentials.json` (read-only, like `/usage`). Without a Claude subscription login the display stays hidden.
 
-## Probleme?
+## Troubleshooting
 
-- **Keine Ampel erscheint nach dem Start einer Session:** Wurde die Session *nach* der Installation gestartet?
-  Ist `node -v` im Terminal verfügbar?
-- **Ampel bleibt unsichtbar, obwohl eine Session läuft:** Prüfen, ob in `%USERPROFILE%\.claude\settings.json` Einträge mit `claude-ampel` stehen.
-- **Ampel beenden, während keine Session läuft:** Dann ist das Fenster unsichtbar und das Rechtsklick-Menü nicht erreichbar –
-  im Task-Manager den `powershell.exe`-Prozess der Ampel beenden, oder eine Session starten und per Rechtsklick beenden.
-- **Fehlerprotokoll:** `%LOCALAPPDATA%\claude-ampel\error.log`
-- **Klick holt das Terminal nicht nach vorne:** Funktioniert mit Windows Terminal und der klassischen Konsole.
-  Bei anderen Terminals (z. B. im Terminal von VS Code) piept es stattdessen.
+- **No light appears after starting a session:** was the session started *after* the installation?
+  Is `node -v` available in the terminal?
+- **The light stays invisible although a session is running:** check whether `%USERPROFILE%\.claude\settings.json` contains entries with `claude-ampel`.
+- **Quitting the light while no session is running:** the window is invisible then and the right-click menu can't be reached –
+  end the light's `powershell.exe` process in Task Manager, or start a session and quit via right-click.
+- **Error log:** `%LOCALAPPDATA%\claude-ampel\error.log`
+- **Clicking doesn't bring the terminal to the front:** works with Windows Terminal and the classic console.
+  With other terminals (e.g. the VS Code terminal) it beeps instead.
 
-## Lizenz
+## License
 
 [MIT](LICENSE)

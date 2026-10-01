@@ -1,8 +1,8 @@
-# Claude-Ampel: kleines, immer sichtbares Fenster mit einer Ampel pro Claude-Code-Session.
-# Rot = braucht deine Eingabe, Gelb = arbeitet, Gruen = fertig, Blau = Shell aktiv.
-# Klick auf eine Ampel holt das Terminal dieser Session nach vorne, Ziehen verschiebt.
-# Die Stati schreibt hook.js nach %LOCALAPPDATA%\claude-ampel\sessions.
-# Daneben: Nutzung des 5-Stunden- und Wochenlimits mit Reset-Zeit (wie /usage in Claude Code).
+# Claude-Ampel: small always-visible window with one traffic light per Claude Code session.
+# Red = needs your input, yellow = working, green = done, blue = shell running.
+# Clicking a light brings that session's terminal to the front, dragging moves the window.
+# hook.js writes the states to %LOCALAPPDATA%\claude-ampel\sessions.
+# Next to it: usage of the 5-hour and weekly limits with reset time (like /usage in Claude Code).
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Net.Http
 Add-Type @"
@@ -28,10 +28,10 @@ New-Item -ItemType Directory -Force $sessDir | Out-Null
 $lampOrder = 'red', 'yellow', 'green', 'blue'
 $lampColor = @{ red = '#FF3B30'; yellow = '#FFCC00'; green = '#30D158'; blue = '#0A84FF' }
 $stateText = @{
-  red    = 'Braucht deine Eingabe'
-  yellow = 'Arbeitet'
-  green  = 'Fertig - wartet auf Eingabe'
-  blue   = 'Shell aktiv'
+  red    = 'Needs your input'
+  yellow = 'Working'
+  green  = 'Done - waiting for input'
+  blue   = 'Shell running'
 }
 
 function New-Brush([string]$hex) {
@@ -92,7 +92,7 @@ function Set-AmpelState($a, [string]$state, [bool]$blinkOn) {
   $a.State = $state
 }
 
-# --- Fenster ----------------------------------------------------------------
+# --- Window -----------------------------------------------------------------
 $win = New-Object System.Windows.Window
 $win.Title = 'Claude-Ampel'
 $win.WindowStyle = 'None'
@@ -115,7 +115,7 @@ $panel.Orientation = 'Horizontal'
 
 $menu = New-Object System.Windows.Controls.ContextMenu
 $quit = New-Object System.Windows.Controls.MenuItem
-$quit.Header = 'Ampel beenden'
+$quit.Header = 'Quit Ampel'
 $quit.Add_Click({ $win.Close() })
 [void]$menu.Items.Add($quit)
 $win.ContextMenu = $menu
@@ -146,7 +146,7 @@ $win.Add_MouseLeftButtonDown({
   try { $win.DragMove() } catch {}
   if ($win.Left -ne $x -or $win.Top -ne $y) { Keep-OnScreen; Save-Position; return }
 
-  # Kein Verschieben = Klick: angeklickte Ampel suchen und deren Session oeffnen
+  # No drag = click: find the clicked light and open its session
   $el = $e.OriginalSource
   while ($el -and -not ($el.Tag -is [string])) { $el = [System.Windows.Media.VisualTreeHelper]::GetParent($el) }
   if (-not $el) { return }
@@ -156,7 +156,7 @@ $win.Add_MouseLeftButtonDown({
   try {
     if (-not (Focus-ClaudeSession $claudePid)) { [System.Media.SystemSounds]::Beep.Play() }
   } catch {
-    Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Fokus: $_"
+    Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Focus: $_"
   } finally { $win.Cursor = $null }
 })
 $win.Add_SizeChanged({ Keep-OnScreen })
@@ -164,12 +164,12 @@ $win.Add_SizeChanged({ Keep-OnScreen })
 $script:hwnd = [IntPtr]::Zero
 $win.Add_SourceInitialized({
   $script:hwnd = (New-Object System.Windows.Interop.WindowInteropHelper $win).Handle
-  # Tool-Fenster: taucht nicht in Alt+Tab auf
+  # Tool window: doesn't show up in Alt+Tab
   $ex = [AmpelNative]::GetWindowLong($script:hwnd, -20)
   [void][AmpelNative]::SetWindowLong($script:hwnd, -20, ($ex -bor 0x80))
 })
 
-# --- Aktualisierung -----------------------------------------------------------
+# --- Refresh ------------------------------------------------------------------
 $ampeln = @{}
 $sessionPid = @{}
 $script:order = ''
@@ -183,7 +183,7 @@ function Test-SessionAlive($s) {
       return ($p.ProcessName -match '^claude')
     } catch { return $false }
   }
-  # Ohne bekannte PID: nach 12h ohne Lebenszeichen aufraeumen
+  # Without a known PID: clean up after 12h without a sign of life
   $age = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$s.ts
   return ($age -lt 12 * 3600 * 1000)
 }
@@ -200,7 +200,7 @@ function Update-Ampeln {
   }
   $sessions = @($sessions | Sort-Object { [long]$_.started })
 
-  # Liegengebliebene Temp-Dateien abgebrochener Hooks aufraeumen (etwa jede Minute)
+  # Clean up leftover temp files of aborted hooks (about every minute)
   if (($script:tick % 150) -eq 1) {
     foreach ($f in [System.IO.Directory]::GetFiles($sessDir, '*.tmp')) {
       if ([System.IO.File]::GetLastWriteTimeUtc($f) -lt [DateTime]::UtcNow.AddMinutes(-1)) { try { [System.IO.File]::Delete($f) } catch {} }
@@ -222,7 +222,7 @@ function Update-Ampeln {
     $a.Label.Text = $short
     $tip = "$folder`n$($stateText[[string]$s.state])"
     if ($s.state -eq 'blue' -and $s.tool) { $tip += " ($($s.tool))" }
-    $tip += "`n$($s.cwd)`nKlick: Session oeffnen"
+    $tip += "`n$($s.cwd)`nClick: open session"
     $a.Root.ToolTip = $tip
   }
   foreach ($id in @($ampeln.Keys)) { if (-not $seen[$id]) { $ampeln.Remove($id); $sessionPid.Remove($id) } }
@@ -234,7 +234,7 @@ function Update-Ampeln {
     foreach ($s in $sessions) { [void]$panel.Children.Add($ampeln[[string]$s.session_id].Root) }
   }
 
-  # Ohne Session verschwindet die Ampel ganz, mit der ersten Session kommt sie zurueck
+  # Without a session the light disappears completely; it comes back with the first session
   if ($sessions.Count -eq 0) {
     if ($win.IsVisible) { $win.Hide() }
   } elseif (-not $win.IsVisible) {
@@ -242,19 +242,19 @@ function Update-Ampeln {
     Keep-OnScreen
   }
 
-  # Alle ~5s wieder ganz nach vorne holen (andere Topmost-Fenster koennen uns verdraengen)
+  # Bring to the very front every ~5s (other topmost windows can push us back)
   if ($script:hwnd -ne [IntPtr]::Zero -and ($script:tick % 12) -eq 0 -and -not $menu.IsOpen) {
     [void][AmpelNative]::SetWindowPos($script:hwnd, [IntPtr](-1), 0, 0, 0, 0, 0x0013)
   }
 }
 
 # --- Usage-Limits -------------------------------------------------------------
-# Gleiche Quelle wie /usage in Claude Code: api.anthropic.com/api/oauth/usage mit dem
-# OAuth-Token aus ~/.claude/.credentials.json (Claude Code erneuert ihn selbst).
-# Nur lesend. Ohne Anmeldung per Claude-Abo bleibt der Block einfach weg.
+# Same source as /usage in Claude Code: api.anthropic.com/api/oauth/usage with the
+# OAuth token from ~/.claude/.credentials.json (Claude Code refreshes it itself).
+# Read-only. Without a Claude subscription login the block simply stays hidden.
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 $credFile  = Join-Path $env:USERPROFILE '.claude\.credentials.json'
-$deCulture = [System.Globalization.CultureInfo]::GetCultureInfo('de-CH')
+$dayCulture = [System.Globalization.CultureInfo]::GetCultureInfo('en-US')
 $invariant = [System.Globalization.CultureInfo]::InvariantCulture
 $http = New-Object System.Net.Http.HttpClient
 $http.Timeout = [TimeSpan]::FromSeconds(15)
@@ -305,7 +305,7 @@ function New-UsageRow([string]$name) {
   $cells[1].TextAlignment = 'Right'
   $cells[1].Margin = '0,0,6,0'
 
-  # duenner Fortschrittsbalken unter der Zeile
+  # thin progress bar below the row
   $track = New-Object System.Windows.Controls.Border
   $track.Height = 2
   $track.Width = $usageBarWidth
@@ -326,7 +326,7 @@ function New-UsageRow([string]$name) {
   @{ Pct = $cells[1]; Reset = $cells[2]; Fill = $fill }
 }
 $rowSession = New-UsageRow '5h'
-$rowWeek    = New-UsageRow 'Wo'
+$rowWeek    = New-UsageRow 'Wk'
 
 function Get-ResetTime($lim) {
   if (-not $lim -or -not $lim.resets_at) { return $null }
@@ -338,15 +338,15 @@ function Format-Reset($lim, [bool]$withDay) {
   if (-not $r) { return '' }
   $t = $r.LocalDateTime
   if (-not $withDay) { return $t.ToString('HH:mm') }
-  "$($t.ToString('ddd', $deCulture).TrimEnd('.')) $($t.ToString('HH:mm'))"
+  "$($t.ToString('ddd', $dayCulture).TrimEnd('.')) $($t.ToString('HH:mm'))"
 }
 
 function Format-Left($lim) {
   $r = Get-ResetTime $lim
   if (-not $r) { return '' }
   $left = $r - [DateTimeOffset]::Now
-  if ($left.TotalMinutes -lt 1) { return 'jetzt' }
-  if ($left.TotalHours -ge 24) { return ('in {0} T {1} h' -f [int][Math]::Floor($left.TotalDays), $left.Hours) }
+  if ($left.TotalMinutes -lt 1) { return 'now' }
+  if ($left.TotalHours -ge 24) { return ('in {0} d {1} h' -f [int][Math]::Floor($left.TotalDays), $left.Hours) }
   if ($left.TotalHours -ge 1)  { return ('in {0} h {1:00} min' -f [int][Math]::Floor($left.TotalHours), $left.Minutes) }
   'in {0} min' -f [int][Math]::Ceiling($left.TotalMinutes)
 }
@@ -356,7 +356,7 @@ function Set-UsageRow($row, $lim, [bool]$withDay) {
     $row.Pct.Text = '-'; $row.Reset.Text = ''; $row.Fill.Width = 0; return
   }
   $p = [double]$lim.utilization
-  # Reset-Zeit vorbei, aber noch keine frischen Daten: Limit ist bereits zurueckgesetzt
+  # Reset time has passed but no fresh data yet: the limit has already been reset
   $r = Get-ResetTime $lim
   $expired = $r -and $r -le [DateTimeOffset]::Now
   if ($expired) { $p = 0 }
@@ -369,11 +369,11 @@ function Set-UsageRow($row, $lim, [bool]$withDay) {
 }
 
 function Update-Usage {
-  # fertige Abfrage abholen
+  # collect a finished request
   if ($script:usageTask -and $script:usageTask.IsCompleted) {
     $t = $script:usageTask; $script:usageTask = $null
     if ($t.IsFaulted -or $t.IsCanceled) {
-      Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Usage: keine Verbindung"
+      Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Usage: no connection"
     } else {
       $resp = $t.Result
       if ($resp.IsSuccessStatusCode) {
@@ -386,7 +386,7 @@ function Update-Usage {
     }
   }
 
-  # neue Abfrage starten: jede Minute, nur solange das Fenster sichtbar ist
+  # start a new request: every minute, only while the window is visible
   if (-not $script:usageTask -and $win.IsVisible -and (Get-Date) -ge $script:usageNext) {
     $script:usageNext = (Get-Date).AddSeconds(60)
     $cred = $null
@@ -404,17 +404,17 @@ function Update-Usage {
   $usageBox.Visibility = 'Visible'
   Set-UsageRow $rowSession $d.five_hour $false
   Set-UsageRow $rowWeek $d.seven_day $true
-  # Daten aelter als 5 min (offline, Token abgelaufen): gedimmt anzeigen
+  # Data older than 5 min (offline, token expired): show dimmed
   $usageStack.Opacity = if (((Get-Date) - $script:usageAt).TotalMinutes -gt 5) { 0.45 } else { 1 }
 
-  $tip = 'Claude-Nutzung (wie /usage)'
-  foreach ($x in @(@('5-Stunden-Limit', $d.five_hour, $false), @('Wochenlimit', $d.seven_day, $true))) {
+  $tip = 'Claude usage (like /usage)'
+  foreach ($x in @(@('5-hour limit', $d.five_hour, $false), @('Weekly limit', $d.seven_day, $true))) {
     $lim = $x[1]
     if ($lim -and $null -ne $lim.utilization) {
       $tip += "`n{0}: {1:0}% - Reset {2} ({3})" -f $x[0], [double]$lim.utilization, (Format-Reset $lim $x[2]), (Format-Left $lim)
     }
   }
-  $tip += "`nStand $($script:usageAt.ToString('HH:mm:ss')) - Klick: aktualisieren"
+  $tip += "`nAs of $($script:usageAt.ToString('HH:mm:ss')) - click: refresh"
   $usageBox.ToolTip = $tip
 }
 
@@ -425,8 +425,8 @@ $timer.Add_Tick({
   try { Update-Usage } catch { Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Usage: $_" }
 })
 
-# Fenster startet unsichtbar, Update-Ampeln blendet es erst bei einer Session ein.
-# Application.Run statt ShowDialog: ein Dialog wuerde beim Verstecken beendet.
+# The window starts invisible; Update-Ampeln only shows it once there is a session.
+# Application.Run instead of ShowDialog: a dialog would end when hidden.
 $app = New-Object System.Windows.Application
 $app.ShutdownMode = 'OnExplicitShutdown'
 $win.Add_Closed({ $timer.Stop(); $app.Shutdown() })

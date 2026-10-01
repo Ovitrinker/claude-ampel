@@ -1,5 +1,5 @@
-// Claude-Ampel Hook: schreibt den Status einer Claude-Code-Session in eine Datei,
-// die ampel.ps1 anzeigt. Darf nie etwas ausgeben und nie fehlschlagen.
+// Claude-Ampel hook: writes the status of a Claude Code session to a file that
+// ampel.ps1 displays. Must never print anything and never fail.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -12,7 +12,7 @@ const ASK_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
 function stateFor(e, prev) {
   switch (e.hook_event_name) {
     case 'SessionStart':
-      // Auto-Compact passiert mitten in der Arbeit: Status dann nicht umwerfen
+      // Auto-compact happens mid-work: don't reset the status then
       return e.source === 'compact' && prev ? prev.state : 'green';
     case 'Stop':
       return 'green';
@@ -30,15 +30,15 @@ function stateFor(e, prev) {
       const t = e.notification_type || '';
       if (t === 'permission_prompt' || t === 'elicitation_dialog') return 'red';
       if (!t && /permission/i.test(e.message || '')) return 'red';
-      return null; // idle_prompt usw.: Status bleibt
+      return null; // idle_prompt etc.: status stays
     }
   }
   return null;
 }
 
-// Den Claude-Code-Prozess dieser Session suchen, damit die Ampel verschwindet,
-// wenn das Terminal geschlossen wird. Kostet ~1s, passiert nur einmal pro Session.
-// Native Installation: claude.exe. npm-Installation: node.exe mit ...claude-code...cli.js.
+// Find this session's Claude Code process, so the light disappears when the
+// terminal is closed. Takes ~1s, only happens once per session.
+// Native install: claude.exe. npm install: node.exe with ...claude-code...cli.js.
 function findClaudeProcess() {
   const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)|$($_.CommandLine)" }'],
@@ -61,7 +61,7 @@ function findClaudeProcess() {
 }
 
 function main(e) {
-  if (!e.session_id || e.agent_id) return; // nur der Haupt-Thread zählt
+  if (!e.session_id || e.agent_id) return; // only the main thread counts
   const file = path.join(DIR, e.session_id.replace(/[^\w-]/g, '') + '.json');
 
   if (e.hook_event_name === 'SessionEnd') {
@@ -98,8 +98,8 @@ function main(e) {
   }
 }
 
-// Unter Windows scheitert das Umbenennen mit EPERM/EBUSY, solange die Ampel die
-// Zieldatei gerade liest. Das dauert nur Millisekunden, also kurz warten und nochmals.
+// On Windows, renaming fails with EPERM/EBUSY while the light is reading the target
+// file. That only takes milliseconds, so wait briefly and try again.
 function renameWithRetry(from, to) {
   for (let i = 0; ; i++) {
     try { return fs.renameSync(from, to); } catch (err) {

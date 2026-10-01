@@ -1,14 +1,14 @@
-// Traegt die Ampel-Hooks in die Claude-Code-Einstellungen ein bzw. entfernt sie wieder.
+// Adds the Ampel hooks to the Claude Code settings or removes them again.
 //   node setup-hooks.js install
 //   node setup-hooks.js uninstall
-// Andere Hooks in settings.json bleiben unangetastet. Vor jeder Aenderung wird ein Backup angelegt.
+// Other hooks in settings.json stay untouched. A backup is created before every change.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
 const mode = process.argv[2];
 if (mode !== 'install' && mode !== 'uninstall') {
-  console.error('Aufruf: node setup-hooks.js install|uninstall');
+  console.error('Usage: node setup-hooks.js install|uninstall');
   process.exit(2);
 }
 
@@ -17,7 +17,7 @@ const file = path.join(configDir, 'settings.json');
 const hookScript = path.join(__dirname, 'hook.js').replace(/\\/g, '/');
 const command = `node "${hookScript}"`;
 
-// Event -> braucht einen Matcher (Tool-Events)
+// Event -> needs a matcher (tool events)
 const EVENTS = {
   SessionStart: false,
   SessionEnd: false,
@@ -39,12 +39,12 @@ if (fs.existsSync(file)) {
   try {
     settings = original.trim() ? JSON.parse(original) : {};
   } catch (err) {
-    console.error(`${file} ist kein gueltiges JSON (${err.message}). Nichts geaendert.`);
+    console.error(`${file} is not valid JSON (${err.message}). Nothing changed.`);
     process.exit(1);
   }
 }
 
-// Bestehende Ampel-Eintraege entfernen (auch von einem frueheren Installationsort)
+// Remove existing Ampel entries (including from an earlier install location)
 const hooks = settings.hooks || {};
 for (const ev of Object.keys(hooks)) {
   if (!Array.isArray(hooks[ev])) continue;
@@ -66,7 +66,7 @@ else delete settings.hooks;
 
 const out = JSON.stringify(settings, null, 2) + '\n';
 if (original !== null && out === original) {
-  console.log('Hooks sind bereits aktuell.');
+  console.log('Hooks are already up to date.');
   process.exit(0);
 }
 
@@ -76,4 +76,4 @@ if (original !== null) {
   fs.writeFileSync(`${file}.bak-ampel-${stamp}`, original);
 }
 fs.writeFileSync(file, out);
-console.log(mode === 'install' ? `Hooks eingetragen in ${file}` : `Hooks entfernt aus ${file}`);
+console.log(mode === 'install' ? `Hooks added to ${file}` : `Hooks removed from ${file}`);
