@@ -14,6 +14,8 @@ your parallel sessions is currently waiting for you.
 - **Click** a light to bring that session's terminal to the front – including the right tab in Windows Terminal.
 - **Hover** shows folder and status.
 - **Drag** with the left mouse button to move the window (the position is saved).
+- **Mouse wheel** over the window, or **right-click** → *Size*, makes everything bigger or smaller
+  (75–400 %, saved together with the position) – handy on large monitors.
 - **Right-click** → *Quit Ampel*.
 - When a terminal is closed, its light disappears automatically.
 - When no session is running, the window is gone completely – it reappears with the next session.
@@ -84,7 +86,7 @@ Hook events used: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, `Not
 Subagents are ignored; only the main session counts.
 
 The session states stay local on your machine. For the usage limits the light queries
-`https://api.anthropic.com/api/oauth/usage` once a minute – using the login token Claude Code stores in
+`https://api.anthropic.com/api/oauth/usage` every 30 seconds – using the login token Claude Code stores in
 `%USERPROFILE%\.claude\.credentials.json` (read-only, like `/usage`). Without a Claude subscription login the display stays hidden.
 
 ## Troubleshooting

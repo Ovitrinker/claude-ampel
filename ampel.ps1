@@ -1,6 +1,7 @@
 # Claude-Ampel: small always-visible window with one traffic light per Claude Code session.
 # Red = needs your input, yellow = working, green = done, blue = shell running.
 # Clicking a light brings that session's terminal to the front, dragging moves the window.
+# Mouse wheel or right-click > Size scales the whole window.
 # hook.js writes the states to %LOCALAPPDATA%\claude-ampel\sessions.
 # Next to it: usage of the 5-hour and weekly limits with reset time (like /usage in Claude Code).
 
@@ -12,6 +13,34 @@ public static class AmpelNative {
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
   [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int index);
   [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int index, int value);
+}
+"@
+# Mouse wheel over the window scales it. Compiled because the window is never activated:
+# WPF then doesn't raise MouseWheel, and PowerShell script blocks as window hooks are unreliable.
+Add-Type -ReferencedAssemblies PresentationCore, WindowsBase @"
+using System;
+using System.Windows.Interop;
+using System.Windows.Media;
+public static class AmpelScale {
+  static ScaleTransform target;
+  static HwndSourceHook hook;  // keep a reference, HwndSource only holds hooks weakly
+  public static void Apply(ScaleTransform tf, double value) {
+    value = Math.Round(Math.Max(0.75, Math.Min(4, value)), 2);
+    tf.ScaleX = value; tf.ScaleY = value;
+  }
+  public static void AttachWheel(IntPtr hwnd, ScaleTransform tf) {
+    target = tf;
+    hook = WndProc;
+    HwndSource.FromHwnd(hwnd).AddHook(hook);
+  }
+  static IntPtr WndProc(IntPtr h, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) {
+    if (msg == 0x020A) {  // WM_MOUSEWHEEL
+      int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+      Apply(target, target.ScaleX + Math.Sign(delta) * 0.1);
+      handled = true;
+    }
+    return IntPtr.Zero;
+  }
 }
 "@
 
@@ -107,6 +136,9 @@ $win.WindowStartupLocation = 'Manual'
 
 $root = New-Object System.Windows.Controls.StackPanel
 $root.Orientation = 'Horizontal'
+# Scales everything (lights, labels, usage) at once; LayoutTransform keeps SizeToContent working
+$scaleTf = New-Object System.Windows.Media.ScaleTransform 1, 1
+$root.LayoutTransform = $scaleTf
 $win.Content = $root
 
 $panel = New-Object System.Windows.Controls.StackPanel
@@ -114,6 +146,19 @@ $panel.Orientation = 'Horizontal'
 [void]$root.Children.Add($panel)
 
 $menu = New-Object System.Windows.Controls.ContextMenu
+$sizeMenu = New-Object System.Windows.Controls.MenuItem
+$sizeMenu.Header = 'Size'
+foreach ($pct in 100, 125, 150, 200, 250, 300) {
+  $item = New-Object System.Windows.Controls.MenuItem
+  $item.Header = "$pct%"
+  $item.Tag = $pct / 100
+  $item.Add_Click({ param($sender) Set-Scale ([double]$sender.Tag) })
+  [void]$sizeMenu.Items.Add($item)
+}
+[void]$menu.Items.Add($sizeMenu)
+$menu.Add_Opened({
+  foreach ($item in $sizeMenu.Items) { $item.IsChecked = [Math]::Abs([double]$item.Tag - $scaleTf.ScaleX) -lt 0.01 }
+})
 $quit = New-Object System.Windows.Controls.MenuItem
 $quit.Header = 'Quit Ampel'
 $quit.Add_Click({ $win.Close() })
@@ -126,8 +171,17 @@ $work = [System.Windows.SystemParameters]::WorkArea
 if ($pos) { $win.Left = $pos.left; $win.Top = $pos.top } else { $win.Left = $work.Right - 40; $win.Top = $work.Bottom - 100 }
 
 function Save-Position {
-  try { [System.IO.File]::WriteAllText($posFile, (@{ left = $win.Left; top = $win.Top } | ConvertTo-Json)) } catch {}
+  $script:savedScale = $scaleTf.ScaleX
+  $data = @{ left = $win.Left; top = $win.Top; scale = $scaleTf.ScaleX }
+  try { [System.IO.File]::WriteAllText($posFile, ($data | ConvertTo-Json)) } catch {}
 }
+
+function Set-Scale([double]$value) {
+  [AmpelScale]::Apply($scaleTf, $value)
+  Save-Position
+}
+if ($pos -and $pos.scale) { [AmpelScale]::Apply($scaleTf, [double]$pos.scale) }
+$script:savedScale = $scaleTf.ScaleX
 
 function Keep-OnScreen {
   $l = [System.Windows.SystemParameters]::VirtualScreenLeft
@@ -167,6 +221,7 @@ $win.Add_SourceInitialized({
   # Tool window: doesn't show up in Alt+Tab
   $ex = [AmpelNative]::GetWindowLong($script:hwnd, -20)
   [void][AmpelNative]::SetWindowLong($script:hwnd, -20, ($ex -bor 0x80))
+  [AmpelScale]::AttachWheel($script:hwnd, $scaleTf)
 })
 
 # --- Refresh ------------------------------------------------------------------
@@ -190,6 +245,8 @@ function Test-SessionAlive($s) {
 
 function Update-Ampeln {
   $script:tick++
+  # The wheel scales directly in AmpelScale; save the new size here
+  if ($scaleTf.ScaleX -ne $script:savedScale) { Save-Position }
   $blinkOn = ($script:tick % 2) -eq 0
 
   $sessions = @()
@@ -258,6 +315,12 @@ $dayCulture = [System.Globalization.CultureInfo]::GetCultureInfo('en-US')
 $invariant = [System.Globalization.CultureInfo]::InvariantCulture
 $http = New-Object System.Net.Http.HttpClient
 $http.Timeout = [TimeSpan]::FromSeconds(15)
+# Without the User-Agent "claude-code/<version>" the endpoint almost always answers 429
+$ccVersion = '2.1.0'
+try { if ((& claude --version 2>$null | Select-Object -First 1) -match '^(\d+\.\d+\.\d+)') { $ccVersion = $Matches[1] } } catch {}
+$usageUserAgent = "claude-code/$ccVersion"
+# Anything shorter than ~30 s quickly leads to 429 again
+$usageInterval = 30
 $script:usageTask = $null
 $script:usageNext = [DateTime]::MinValue
 $script:usageData = $null
@@ -379,22 +442,24 @@ function Update-Usage {
       if ($resp.IsSuccessStatusCode) {
         $script:usageData = $resp.Content.ReadAsStringAsync().Result | ConvertFrom-Json
         $script:usageAt = Get-Date
-      } elseif ([int]$resp.StatusCode -eq 429) {
-        $script:usageNext = (Get-Date).AddMinutes(5)
+      } else {
+        Add-Content -Path (Join-Path $base 'error.log') -Value "$(Get-Date -Format s) Usage: HTTP $([int]$resp.StatusCode)"
+        if ([int]$resp.StatusCode -eq 429) { $script:usageNext = (Get-Date).AddMinutes(2) }
       }
       $resp.Dispose()
     }
   }
 
-  # start a new request: every minute, only while the window is visible
+  # start a new request: every $usageInterval s, only while the window is visible
   if (-not $script:usageTask -and $win.IsVisible -and (Get-Date) -ge $script:usageNext) {
-    $script:usageNext = (Get-Date).AddSeconds(60)
+    $script:usageNext = (Get-Date).AddSeconds($usageInterval)
     $cred = $null
     try { $cred = ([System.IO.File]::ReadAllText($credFile) | ConvertFrom-Json).claudeAiOauth } catch {}
     if ($cred -and $cred.accessToken) {
       $req = New-Object System.Net.Http.HttpRequestMessage ([System.Net.Http.HttpMethod]::Get), 'https://api.anthropic.com/api/oauth/usage'
       $req.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue 'Bearer', $cred.accessToken
       [void]$req.Headers.TryAddWithoutValidation('anthropic-beta', 'oauth-2025-04-20')
+      [void]$req.Headers.TryAddWithoutValidation('User-Agent', $usageUserAgent)
       $script:usageTask = $http.SendAsync($req)
     }
   }
